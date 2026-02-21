@@ -1,9 +1,121 @@
-// PRESSURE - Game Store with REAL wall compression
+// PRESSURE - Game Store with persistence, undo, timer, screen shake
 import { create } from 'zustand'
 import { GameState, GameActions, Level, Tile, Position, Direction } from './types'
 
 const DIRS: Direction[] = ['up', 'right', 'down', 'left']
 const OPP: Record<Direction, Direction> = { up: 'down', down: 'up', left: 'right', right: 'left' }
+
+const STORAGE_KEY = 'pressure_save_v2'
+
+function rotateConnections(conns: Direction[], times: number): Direction[] {
+  return conns.map(c => DIRS[(DIRS.indexOf(c) + times) % 4])
+}
+
+export function checkConnected(tiles: Tile[], goals: Position[]): boolean {
+  if (goals.length < 2) return true
+
+  const getTile = (x: number, y: number) => tiles.find(t => t.x === x && t.y === y)
+  const visited = new Set<string>()
+  const queue: Position[] = [goals[0]]
+  visited.add(`${goals[0].x},${goals[0].y}`)
+  const connected = new Set([`${goals[0].x},${goals[0].y}`])
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!
+    const tile = getTile(curr.x, curr.y)
+    if (!tile) continue
+
+    for (const d of tile.connections) {
+      let nx = curr.x, ny = curr.y
+      if (d === 'up') ny--; else if (d === 'down') ny++
+      else if (d === 'left') nx--; else if (d === 'right') nx++
+
+      const key = `${nx},${ny}`
+      if (visited.has(key)) continue
+
+      const neighbor = getTile(nx, ny)
+      if (!neighbor || neighbor.type === 'wall' || neighbor.type === 'crushed') continue
+
+      if (neighbor.connections.includes(OPP[d])) {
+        visited.add(key)
+        queue.push({ x: nx, y: ny })
+        if (goals.some(g => g.x === nx && g.y === ny)) connected.add(key)
+      }
+    }
+  }
+
+  return goals.every(g => connected.has(`${g.x},${g.y}`))
+}
+
+function loadSaved(): Pick<GameState, 'completedLevels' | 'bestMoves' | 'showTutorial' | 'generatedLevels'> {
+  if (typeof window === 'undefined') return { completedLevels: [], bestMoves: {}, showTutorial: true, generatedLevels: [] }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { completedLevels: [], bestMoves: {}, showTutorial: true, generatedLevels: [] }
+    const p = JSON.parse(raw)
+    return {
+      completedLevels: p.completedLevels || [],
+      bestMoves: p.bestMoves || {},
+      showTutorial: p.showTutorial !== false,
+      generatedLevels: p.generatedLevels || [],
+    }
+  } catch {
+    return { completedLevels: [], bestMoves: {}, showTutorial: true, generatedLevels: [] }
+  }
+}
+
+function persist(state: Pick<GameState, 'completedLevels' | 'bestMoves' | 'showTutorial' | 'generatedLevels'>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      completedLevels: state.completedLevels,
+      bestMoves: state.bestMoves,
+      showTutorial: state.showTutorial,
+      generatedLevels: state.generatedLevels,
+    }))
+  } catch {}
+}
+
+// Web Audio synth helpers
+function playTone(freq: number, type: OscillatorType = 'sine', duration = 0.08, vol = 0.18) {
+  if (typeof window === 'undefined') return
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.type = type; osc.frequency.value = freq
+    gain.gain.setValueAtTime(vol, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration)
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + duration)
+  } catch {}
+}
+
+export function sfx(event: 'rotate' | 'win' | 'lose' | 'crush' | 'start' | 'undo') {
+  switch (event) {
+    case 'rotate': playTone(440, 'triangle', 0.06, 0.12); break
+    case 'win':
+      playTone(523, 'sine', 0.15, 0.2)
+      setTimeout(() => playTone(659, 'sine', 0.15, 0.2), 120)
+      setTimeout(() => playTone(784, 'sine', 0.25, 0.3), 240)
+      break
+    case 'lose':
+      playTone(220, 'sawtooth', 0.3, 0.3)
+      setTimeout(() => playTone(180, 'sawtooth', 0.3, 0.4), 150)
+      break
+    case 'crush':
+      playTone(150, 'square', 0.12, 0.25)
+      break
+    case 'start':
+      playTone(392, 'triangle', 0.1, 0.15)
+      break
+    case 'undo':
+      playTone(330, 'triangle', 0.06, 0.1)
+      break
+  }
+}
+
+const saved = loadSaved()
 
 const initialState: GameState = {
   currentLevel: null,
@@ -12,50 +124,15 @@ const initialState: GameState = {
   compressionActive: false,
   compressionRate: 3000,
   moves: 0,
-  status: 'menu',
-  completedLevels: [],
-  bestMoves: {},
-}
-
-function rotateConnections(conns: Direction[], times: number): Direction[] {
-  return conns.map(c => DIRS[(DIRS.indexOf(c) + times) % 4])
-}
-
-function checkConnected(tiles: Tile[], goals: Position[]): boolean {
-  if (goals.length < 2) return true
-  
-  const getTile = (x: number, y: number) => tiles.find(t => t.x === x && t.y === y)
-  
-  const visited = new Set<string>()
-  const queue: Position[] = [goals[0]]
-  visited.add(`${goals[0].x},${goals[0].y}`)
-  const connected = new Set([`${goals[0].x},${goals[0].y}`])
-  
-  while (queue.length > 0) {
-    const curr = queue.shift()!
-    const tile = getTile(curr.x, curr.y)
-    if (!tile) continue
-    
-    for (const d of tile.connections) {
-      let nx = curr.x, ny = curr.y
-      if (d === 'up') ny--; else if (d === 'down') ny++
-      else if (d === 'left') nx--; else if (d === 'right') nx++
-      
-      const key = `${nx},${ny}`
-      if (visited.has(key)) continue
-      
-      const neighbor = getTile(nx, ny)
-      if (!neighbor || neighbor.type === 'wall' || neighbor.type === 'crushed') continue
-      
-      if (neighbor.connections.includes(OPP[d])) {
-        visited.add(key)
-        queue.push({ x: nx, y: ny })
-        if (goals.some(g => g.x === nx && g.y === ny)) connected.add(key)
-      }
-    }
-  }
-  
-  return goals.every(g => connected.has(`${g.x},${g.y}`))
+  status: saved.showTutorial ? 'tutorial' : 'menu',
+  completedLevels: saved.completedLevels,
+  bestMoves: saved.bestMoves,
+  history: [],
+  lastRotatedPos: null,
+  showTutorial: saved.showTutorial,
+  generatedLevels: saved.generatedLevels,
+  elapsedSeconds: 0,
+  screenShake: false,
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -70,6 +147,10 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       compressionRate: level.compressionRate,
       moves: 0,
       status: 'idle',
+      history: [],
+      lastRotatedPos: null,
+      elapsedSeconds: 0,
+      screenShake: false,
     })
   },
 
@@ -81,12 +162,11 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   startGame: () => {
     const { currentLevel } = get()
     if (!currentLevel) return
-    
-    set({ status: 'playing' })
-    
+    sfx('start')
+    set({ status: 'playing', elapsedSeconds: 0 })
+
     if (get().checkWin()) return
-    
-    // Start compression after delay
+
     setTimeout(() => {
       if (get().status === 'playing') {
         set({ compressionActive: true })
@@ -97,20 +177,47 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
   tapTile: (x: number, y: number) => {
     const { tiles, status, moves, currentLevel } = get()
     if (status !== 'playing') return
-    
+
     const tile = tiles.find(t => t.x === x && t.y === y)
     if (!tile?.canRotate) return
     if (currentLevel && moves >= currentLevel.maxMoves) return
 
+    sfx('rotate')
+    const prevTiles = tiles.map(t => ({ ...t, connections: [...t.connections] }))
+
     const newTiles = tiles.map(t => {
       if (t.x === x && t.y === y) {
-        return { ...t, connections: rotateConnections(t.connections, 1) }
+        return { ...t, connections: rotateConnections(t.connections, 1), justRotated: true }
       }
-      return t
+      return { ...t, justRotated: false }
     })
 
-    set({ tiles: newTiles, moves: moves + 1 })
+    set(state => ({
+      tiles: newTiles,
+      moves: moves + 1,
+      history: [...state.history, prevTiles],
+      lastRotatedPos: { x, y },
+    }))
+
+    // Clear animation flag
+    setTimeout(() => {
+      set(state => ({ tiles: state.tiles.map(t => ({ ...t, justRotated: false })) }))
+    }, 300)
+
     get().checkWin()
+  },
+
+  undoMove: () => {
+    const { history, moves, status } = get()
+    if (status !== 'playing' || history.length === 0) return
+    sfx('undo')
+    const prev = history[history.length - 1]
+    set(state => ({
+      tiles: prev,
+      moves: moves - 1,
+      history: state.history.slice(0, -1),
+      lastRotatedPos: null,
+    }))
   },
 
   advanceWalls: () => {
@@ -119,29 +226,29 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
     const newOffset = wallOffset + 1
     const gridSize = currentLevel.gridSize
-    
-    // Check if any goal node is being crushed
+
     let crushedNode = false
     const newTiles = tiles.map(t => {
-      // Calculate if this tile is in the crush zone
-      const distFromEdge = Math.min(t.x, t.y, gridSize - 1 - t.x, gridSize - 1 - t.y)
-      
-      if (distFromEdge < newOffset) {
+      const dist = Math.min(t.x, t.y, gridSize - 1 - t.x, gridSize - 1 - t.y)
+      if (dist < newOffset) {
         if (t.type === 'node') {
           crushedNode = true
-          return { ...t, type: 'crushed' as const, connections: [], canRotate: false }
+          sfx('crush')
+          return { ...t, type: 'crushed' as const, connections: [], canRotate: false, justCrushed: true }
         }
         if (t.type === 'path') {
-          return { ...t, type: 'crushed' as const, connections: [], canRotate: false }
+          return { ...t, type: 'crushed' as const, connections: [], canRotate: false, justCrushed: true }
         }
       }
       return t
     })
-    
+
     set({ tiles: newTiles, wallOffset: newOffset })
-    
+
     if (crushedNode) {
-      set({ status: 'lost', compressionActive: false })
+      sfx('lose')
+      set({ status: 'lost', compressionActive: false, screenShake: true })
+      setTimeout(() => set({ screenShake: false }), 500)
     }
   },
 
@@ -150,18 +257,15 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     if (!currentLevel) return false
 
     if (checkConnected(tiles, currentLevel.goalNodes)) {
+      sfx('win')
       set(state => {
         const newCompleted = [...new Set([...state.completedLevels, currentLevel.id])]
         const newBest = { ...state.bestMoves }
         if (!newBest[currentLevel.id] || moves < newBest[currentLevel.id]) {
           newBest[currentLevel.id] = moves
         }
-        return { 
-          status: 'won', 
-          completedLevels: newCompleted, 
-          bestMoves: newBest,
-          compressionActive: false 
-        }
+        persist({ completedLevels: newCompleted, bestMoves: newBest, showTutorial: false, generatedLevels: state.generatedLevels })
+        return { status: 'won', completedLevels: newCompleted, bestMoves: newBest, compressionActive: false }
       })
       return true
     }
@@ -170,5 +274,39 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
 
   goToMenu: () => {
     set({ status: 'menu', currentLevel: null, compressionActive: false })
+  },
+
+  completeTutorial: () => {
+    const { completedLevels, bestMoves, generatedLevels } = get()
+    persist({ completedLevels, bestMoves, showTutorial: false, generatedLevels })
+    set({ showTutorial: false, status: 'menu' })
+  },
+
+  addGeneratedLevel: (level: Level) => {
+    set(state => {
+      const newGenerated = [...state.generatedLevels, level]
+      persist({ completedLevels: state.completedLevels, bestMoves: state.bestMoves, showTutorial: false, generatedLevels: newGenerated })
+      return { generatedLevels: newGenerated }
+    })
+  },
+
+  deleteGeneratedLevel: (id: number) => {
+    set(state => {
+      const newGenerated = state.generatedLevels.filter(l => l.id !== id)
+      persist({ completedLevels: state.completedLevels, bestMoves: state.bestMoves, showTutorial: false, generatedLevels: newGenerated })
+      return { generatedLevels: newGenerated }
+    })
+  },
+
+  tickTimer: () => {
+    const { status } = get()
+    if (status === 'playing') {
+      set(state => ({ elapsedSeconds: state.elapsedSeconds + 1 }))
+    }
+  },
+
+  triggerShake: () => {
+    set({ screenShake: true })
+    setTimeout(() => set({ screenShake: false }), 400)
   },
 }))

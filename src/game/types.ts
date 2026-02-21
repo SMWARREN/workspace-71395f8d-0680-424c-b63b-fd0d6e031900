@@ -15,6 +15,9 @@ export interface Tile {
   connections: Direction[]
   isGoalNode: boolean
   canRotate: boolean
+  // Animation state
+  justRotated?: boolean
+  justCrushed?: boolean
 }
 
 export interface Level {
@@ -27,6 +30,8 @@ export interface Level {
   compressionRate: number
   maxMoves: number
   goalNodes: Position[]
+  isGenerated?: boolean
+  par?: number          // optimal solve moves
 }
 
 export interface GameState {
@@ -36,9 +41,15 @@ export interface GameState {
   compressionActive: boolean
   compressionRate: number
   moves: number
-  status: 'menu' | 'idle' | 'playing' | 'won' | 'lost'
+  status: 'menu' | 'tutorial' | 'idle' | 'playing' | 'won' | 'lost'
   completedLevels: number[]
   bestMoves: Record<number, number>
+  history: Tile[][]
+  lastRotatedPos: Position | null
+  showTutorial: boolean
+  generatedLevels: Level[]
+  elapsedSeconds: number
+  screenShake: boolean
 }
 
 export interface GameActions {
@@ -49,4 +60,10 @@ export interface GameActions {
   advanceWalls: () => void
   checkWin: () => boolean
   goToMenu: () => void
+  undoMove: () => void
+  completeTutorial: () => void
+  addGeneratedLevel: (level: Level) => void
+  deleteGeneratedLevel: (id: number) => void
+  tickTimer: () => void
+  triggerShake: () => void
 }
