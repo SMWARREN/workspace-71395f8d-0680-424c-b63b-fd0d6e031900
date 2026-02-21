@@ -11,30 +11,30 @@ function rotate(conns: Direction[], times: number): Direction[] {
 // BFS to check if all goal nodes are connected
 function isConnected(tiles: Tile[], goals: Position[]): boolean {
   if (goals.length < 2) return true
-  
+
   const getTile = (x: number, y: number) => tiles.find(t => t.x === x && t.y === y)
-  
+
   const visited = new Set<string>()
   const queue: Position[] = [goals[0]]
   visited.add(`${goals[0].x},${goals[0].y}`)
   const connected = new Set([`${goals[0].x},${goals[0].y}`])
-  
+
   while (queue.length > 0) {
     const curr = queue.shift()!
     const tile = getTile(curr.x, curr.y)
     if (!tile) continue
-    
+
     for (const d of tile.connections) {
       let nx = curr.x, ny = curr.y
       if (d === 'up') ny--; else if (d === 'down') ny++
       else if (d === 'left') nx--; else if (d === 'right') nx++
-      
+
       const key = `${nx},${ny}`
       if (visited.has(key)) continue
-      
+
       const neighbor = getTile(nx, ny)
       if (!neighbor || neighbor.type === 'wall' || neighbor.type === 'crushed') continue
-      
+
       if (neighbor.connections.includes(OPP[d])) {
         visited.add(key)
         queue.push({ x: nx, y: ny })
@@ -42,31 +42,37 @@ function isConnected(tiles: Tile[], goals: Position[]): boolean {
       }
     }
   }
-  
+
   return goals.every(g => connected.has(`${g.x},${g.y}`))
 }
 
-// BFS solver - returns number of rotations needed
+// BFS solver - returns number of rotations needed, -1 if unsolvable
+// Capped at 50k iterations to prevent UI freezing on large/hard grids
 function solve(tiles: Tile[], goals: Position[], maxMoves: number): number {
   if (isConnected(tiles, goals)) return 0
-  
+
   const rotatable = tiles.filter(t => t.canRotate)
   if (rotatable.length === 0) return -1
-  
+
   const visited = new Set<string>()
   const queue: { tiles: Tile[]; moves: number }[] = [{ tiles: [...tiles], moves: 0 }]
-  
+
   const hash = (ts: Tile[]) => ts
     .filter(t => t.canRotate)
     .map(t => `${t.x},${t.y}:${t.connections.join(',')}`)
     .sort()
     .join('|')
-  
+
   visited.add(hash(tiles))
-  
+
+  let iterations = 0
+  const MAX_ITERATIONS = 50_000
+
   while (queue.length > 0) {
+    if (++iterations > MAX_ITERATIONS) return -1
+
     const curr = queue.shift()!
-    
+
     for (const rt of rotatable) {
       for (let r = 1; r <= 3; r++) {
         const newTiles = curr.tiles.map(t => {
@@ -75,21 +81,21 @@ function solve(tiles: Tile[], goals: Position[], maxMoves: number): number {
           }
           return t
         })
-        
+
         const h = hash(newTiles)
         if (visited.has(h)) continue
         visited.add(h)
-        
+
         const newMoves = curr.moves + r
         if (newMoves > maxMoves) continue
-        
+
         if (isConnected(newTiles, goals)) return newMoves
-        
+
         queue.push({ tiles: newTiles, moves: newMoves })
       }
     }
   }
-  
+
   return -1
 }
 
@@ -127,7 +133,6 @@ export const LEVELS: Level[] = [
     tiles: [
       ...createWalls(5),
       tile('node', 1, 2, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
-      // Path starts vertical (up-down) but needs to be horizontal (left-right)
       tile('path', 2, 2, { connections: ['up', 'down'], canRotate: true }),
       tile('node', 3, 2, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
     ],
@@ -136,7 +141,7 @@ export const LEVELS: Level[] = [
     maxMoves: 3,
     goalNodes: [{ x: 1, y: 2 }, { x: 3, y: 2 }],
   },
-  
+
   // Level 2: Two tiles to rotate
   {
     id: 2, name: 'Double', world: 1, gridSize: 5,
@@ -152,14 +157,13 @@ export const LEVELS: Level[] = [
     maxMoves: 5,
     goalNodes: [{ x: 1, y: 2 }, { x: 4, y: 2 }],
   },
-  
+
   // Level 3: Vertical connection (tiles start horizontal)
   {
     id: 3, name: 'Vertical', world: 1, gridSize: 5,
     tiles: [
       ...createWalls(5),
       tile('node', 2, 1, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
-      // Path starts horizontal but needs to be vertical
       tile('path', 2, 2, { connections: ['left', 'right'], canRotate: true }),
       tile('node', 2, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
     ],
@@ -168,7 +172,7 @@ export const LEVELS: Level[] = [
     maxMoves: 3,
     goalNodes: [{ x: 2, y: 1 }, { x: 2, y: 3 }],
   },
-  
+
   // Level 4: L-shape corner
   {
     id: 4, name: 'Corner', world: 1, gridSize: 5,
@@ -185,7 +189,7 @@ export const LEVELS: Level[] = [
     maxMoves: 6,
     goalNodes: [{ x: 1, y: 1 }, { x: 3, y: 3 }],
   },
-  
+
   // Level 5: Four corners
   {
     id: 5, name: 'Square', world: 2, gridSize: 5,
@@ -195,7 +199,6 @@ export const LEVELS: Level[] = [
       tile('node', 3, 1, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 1, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 3, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
-      // All paths start in wrong direction
       tile('path', 2, 1, { connections: ['up', 'down'], canRotate: true }),
       tile('path', 2, 3, { connections: ['up', 'down'], canRotate: true }),
       tile('path', 1, 2, { connections: ['left', 'right'], canRotate: true }),
@@ -206,7 +209,7 @@ export const LEVELS: Level[] = [
     maxMoves: 8,
     goalNodes: [{ x: 1, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 3 }, { x: 3, y: 3 }],
   },
-  
+
   // Level 6: Zigzag
   {
     id: 6, name: 'Zigzag', world: 2, gridSize: 5,
@@ -225,7 +228,7 @@ export const LEVELS: Level[] = [
     maxMoves: 10,
     goalNodes: [{ x: 1, y: 1 }, { x: 1, y: 3 }],
   },
-  
+
   // Level 7: Triple line
   {
     id: 7, name: 'Triple', world: 2, gridSize: 5,
@@ -241,7 +244,7 @@ export const LEVELS: Level[] = [
     maxMoves: 4,
     goalNodes: [{ x: 1, y: 2 }, { x: 3, y: 2 }],
   },
-  
+
   // Level 8: Cross center
   {
     id: 8, name: 'Cross', world: 3, gridSize: 5,
@@ -251,9 +254,7 @@ export const LEVELS: Level[] = [
       tile('node', 3, 1, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 1, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 3, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
-      // Center cross piece (fixed)
       tile('path', 2, 2, { connections: ['up', 'down', 'left', 'right'] }),
-      // Wrong direction paths
       tile('path', 2, 1, { connections: ['up', 'down'], canRotate: true }),
       tile('path', 2, 3, { connections: ['up', 'down'], canRotate: true }),
       tile('path', 1, 2, { connections: ['left', 'right'], canRotate: true }),
@@ -264,7 +265,7 @@ export const LEVELS: Level[] = [
     maxMoves: 6,
     goalNodes: [{ x: 1, y: 1 }, { x: 3, y: 1 }, { x: 1, y: 3 }, { x: 3, y: 3 }],
   },
-  
+
   // Level 9: Spiral
   {
     id: 9, name: 'Spiral', world: 3, gridSize: 5,
@@ -283,7 +284,7 @@ export const LEVELS: Level[] = [
     maxMoves: 10,
     goalNodes: [{ x: 1, y: 1 }, { x: 1, y: 3 }],
   },
-  
+
   // Level 10: Final
   {
     id: 10, name: 'Final', world: 3, gridSize: 5,
@@ -294,7 +295,6 @@ export const LEVELS: Level[] = [
       tile('node', 2, 2, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 1, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
       tile('node', 3, 3, { connections: ['up', 'down', 'left', 'right'], isGoalNode: true }),
-      // Wrong direction paths
       tile('path', 2, 1, { connections: ['up', 'down'], canRotate: true }),
       tile('path', 1, 2, { connections: ['left', 'right'], canRotate: true }),
       tile('path', 3, 2, { connections: ['left', 'right'], canRotate: true }),
@@ -311,42 +311,36 @@ export const LEVELS: Level[] = [
 export function verifyLevels(): { id: number; name: string; solvable: boolean; moves: number }[] {
   return LEVELS.map(level => {
     const moves = solve(level.tiles, level.goalNodes, level.maxMoves)
-    return {
-      id: level.id,
-      name: level.name,
-      solvable: moves >= 0,
-      moves
-    }
+    return { id: level.id, name: level.name, solvable: moves >= 0, moves }
   })
 }
 
 // Get solution for a level
 export function getSolution(level: Level): { x: number; y: number; rotations: number }[] | null {
-  // Simple BFS to find the solution path
   if (isConnected(level.tiles, level.goalNodes)) return []
-  
+
   const rotatable = level.tiles.filter(t => t.canRotate)
-  const DIRS: Direction[] = ['up', 'right', 'down', 'left']
-  
-  const rotate = (conns: Direction[], times: number): Direction[] => 
-    conns.map(c => DIRS[(DIRS.indexOf(c) + times) % 4])
-  
+
   const visited = new Set<string>()
   const queue: { tiles: Tile[]; path: { x: number; y: number; rotations: number }[] }[] = [
     { tiles: [...level.tiles], path: [] }
   ]
-  
+
   const hash = (ts: Tile[]) => ts
     .filter(t => t.canRotate)
     .map(t => `${t.x},${t.y}:${t.connections.join(',')}`)
     .sort()
     .join('|')
-  
+
   visited.add(hash(level.tiles))
-  
+
+  let iterations = 0
+
   while (queue.length > 0) {
+    if (++iterations > 50_000) return null
+
     const curr = queue.shift()!
-    
+
     for (const rt of rotatable) {
       for (let r = 1; r <= 3; r++) {
         const newTiles = curr.tiles.map(t => {
@@ -355,15 +349,15 @@ export function getSolution(level: Level): { x: number; y: number; rotations: nu
           }
           return t
         })
-        
+
         const h = hash(newTiles)
         if (visited.has(h)) continue
         visited.add(h)
-        
+
         const newPath = [...curr.path, { x: rt.x, y: rt.y, rotations: r }]
-        
+
         if (isConnected(newTiles, level.goalNodes)) return newPath
-        
+
         const totalMoves = newPath.reduce((s, p) => s + p.rotations, 0)
         if (totalMoves < level.maxMoves) {
           queue.push({ tiles: newTiles, path: newPath })
@@ -371,7 +365,7 @@ export function getSolution(level: Level): { x: number; y: number; rotations: nu
       }
     }
   }
-  
+
   return null
 }
 
@@ -390,15 +384,18 @@ export function verifyLevel(level: Level): { solvable: boolean; minMoves: number
 /* ─────────────────────────────────────────
    Procedural Level Generator
    Algorithm:
-   1. Pick random interior positions for goal nodes
-   2. Build a spanning tree connecting all nodes via BFS path routing
-   3. Scramble path tiles (rotate them away from solution)
-   4. Verify with BFS solver — retry up to 30 times if unsolvable
+   1. Pick random INTERIOR positions for goal nodes (margin ≥ 2 from walls)
+   2. Build a spanning tree connecting all nodes via L-shaped routing
+   3. Scramble path tiles (rotate away from solution)
+   4. Verify with BFS solver (capped at 50k iterations)
+   5. Optionally add decoy tiles (medium/hard only) to confuse players
+   6. Retry up to 20 times if unsolvable
 ───────────────────────────────────────── */
 export interface GenerateOptions {
   gridSize: number
   nodeCount: number
   difficulty: 'easy' | 'medium' | 'hard'
+  decoys?: boolean  // override: force decoys on or off
 }
 
 function rng(min: number, max: number): number {
@@ -416,37 +413,44 @@ function shuffleArray<T>(arr: T[]): T[] {
 
 export function generateLevel(opts: GenerateOptions): Level {
   const { gridSize, nodeCount, difficulty } = opts
-  const inner = gridSize - 2  // interior cells (excluding border walls)
 
   const diffParams = {
-    easy:   { compressionDelay: 10000, rateMultiplier: 1.0, movePadding: 4 },
-    medium: { compressionDelay: 6000,  rateMultiplier: 0.75, movePadding: 2 },
-    hard:   { compressionDelay: 4000,  rateMultiplier: 0.5, movePadding: 1 },
+    easy:   { compressionDelay: 10000, rateMultiplier: 1.0,  movePadding: 4, decoyCount: 0 },
+    medium: { compressionDelay: 6000,  rateMultiplier: 0.75, movePadding: 2, decoyCount: 2 },
+    hard:   { compressionDelay: 4000,  rateMultiplier: 0.5,  movePadding: 1, decoyCount: 3 },
   }[difficulty]
+
+  // Respect explicit decoy override, otherwise use difficulty defaults
+  // easy = 0 decoys, medium = 2, hard = 3
+  const useDecoys = opts.decoys !== undefined ? opts.decoys : diffParams.decoyCount > 0
+  const decoyCount = useDecoys ? diffParams.decoyCount : 0
 
   const baseRate = Math.max(1200, 3000 - (gridSize - 4) * 200)
   const compressionRate = Math.round(baseRate * diffParams.rateMultiplier)
 
-  for (let attempt = 0; attempt < 40; attempt++) {
-    // 1. Pick goal node positions (interior only, not touching border)
+  for (let attempt = 0; attempt < 20; attempt++) {
+
+    // 1. Pick goal node positions — require margin of 2 from border walls
+    //    so goals are always in the interior and walls closing in feel dramatic
+    const margin = Math.min(2, Math.floor(gridSize / 3))
     const candidates: Position[] = []
-    for (let y = 1; y < gridSize - 1; y++)
-      for (let x = 1; x < gridSize - 1; x++)
+    for (let y = margin; y < gridSize - margin; y++)
+      for (let x = margin; x < gridSize - margin; x++)
         candidates.push({ x, y })
 
     const shuffled = shuffleArray(candidates)
-    // Ensure nodes aren't adjacent for more interesting layouts
     const goalPositions: Position[] = []
     for (const pos of shuffled) {
       if (goalPositions.length >= nodeCount) break
-      const tooClose = goalPositions.some(g => Math.abs(g.x - pos.x) + Math.abs(g.y - pos.y) < 2)
+      // Nodes must be well-separated (Manhattan distance >= 3)
+      const tooClose = goalPositions.some(
+        g => Math.abs(g.x - pos.x) + Math.abs(g.y - pos.y) < 3
+      )
       if (!tooClose) goalPositions.push(pos)
     }
     if (goalPositions.length < nodeCount) continue
 
-    // 2. Build paths connecting nodes using Prim's-like spanning tree
-    // We trace paths between pairs of nodes
-    const pathSet = new Set<string>()
+    // 2. Build paths connecting nodes via L-shaped routing
     const pathDirs = new Map<string, Direction[]>()
 
     const addPath = (x: number, y: number, dirs: Direction[]) => {
@@ -454,20 +458,15 @@ export function generateLevel(opts: GenerateOptions): Level {
       const existing = pathDirs.get(key) ?? []
       const merged = [...new Set([...existing, ...dirs])]
       pathDirs.set(key, merged)
-      pathSet.add(key)
     }
 
-    // Trace a path between two positions using L-shaped routing
     const tracePath = (from: Position, to: Position) => {
       let cx = from.x, cy = from.y
-      // Move horizontally first, then vertically
       while (cx !== to.x) {
         const dx = to.x > cx ? 1 : -1
         const dir: Direction = dx > 0 ? 'right' : 'left'
         const opp: Direction = dx > 0 ? 'left' : 'right'
-        const key = `${cx},${cy}`
-        const existing = pathDirs.get(key) ?? []
-        if (!existing.includes(dir)) addPath(cx, cy, [dir])
+        addPath(cx, cy, [dir])
         cx += dx
         if (cx !== to.x || cy !== to.y) addPath(cx, cy, [opp])
       }
@@ -481,7 +480,6 @@ export function generateLevel(opts: GenerateOptions): Level {
       }
     }
 
-    // Connect goal nodes in sequence
     for (let i = 0; i < goalPositions.length - 1; i++) {
       tracePath(goalPositions[i], goalPositions[i + 1])
     }
@@ -490,10 +488,10 @@ export function generateLevel(opts: GenerateOptions): Level {
     const wallTiles: Tile[] = []
     for (let i = 0; i < gridSize; i++) {
       wallTiles.push({ id: `wall-${i}-0`, type: 'wall', x: i, y: 0, connections: [], isGoalNode: false, canRotate: false })
-      wallTiles.push({ id: `wall-${i}-${gridSize-1}`, type: 'wall', x: i, y: gridSize - 1, connections: [], isGoalNode: false, canRotate: false })
+      wallTiles.push({ id: `wall-${i}-${gridSize - 1}`, type: 'wall', x: i, y: gridSize - 1, connections: [], isGoalNode: false, canRotate: false })
       if (i > 0 && i < gridSize - 1) {
         wallTiles.push({ id: `wall-0-${i}`, type: 'wall', x: 0, y: i, connections: [], isGoalNode: false, canRotate: false })
-        wallTiles.push({ id: `wall-${gridSize-1}-${i}`, type: 'wall', x: gridSize - 1, y: i, connections: [], isGoalNode: false, canRotate: false })
+        wallTiles.push({ id: `wall-${gridSize - 1}-${i}`, type: 'wall', x: gridSize - 1, y: i, connections: [], isGoalNode: false, canRotate: false })
       }
     }
 
@@ -505,12 +503,11 @@ export function generateLevel(opts: GenerateOptions): Level {
       isGoalNode: true, canRotate: false,
     }))
 
-    // Path tiles — exclude node positions, scramble connections
+    // Path tiles — scramble so they're NOT solved from the start
     const pathTiles: Tile[] = []
     pathDirs.forEach((dirs, key) => {
       const [px, py] = key.split(',').map(Number)
-      if (goalSet.has(key)) return  // skip — node handles this position
-      // Scramble: rotate connections by 1-3 steps so it's NOT solved
+      if (goalSet.has(key)) return
       const scrambleAmount = rng(1, 3)
       const scrambledConns = dirs.map(d => DIRS[(DIRS.indexOf(d) + scrambleAmount) % 4])
       pathTiles.push({
@@ -523,22 +520,64 @@ export function generateLevel(opts: GenerateOptions): Level {
 
     const allTiles = [...wallTiles, ...nodeTiles, ...pathTiles]
 
-    // 4. Compute min moves needed
+    // 4. Verify solvability
     const rotatableCount = pathTiles.length
     const estimatedMaxMoves = rotatableCount * 3 + diffParams.movePadding
     const verifyMoves = solve(allTiles, goalPositions, estimatedMaxMoves)
 
-    if (verifyMoves < 0) continue  // unsolvable, try again
+    if (verifyMoves < 0) continue // unsolvable, retry
 
     const maxMoves = verifyMoves + diffParams.movePadding
 
-    const generatedId = Date.now() + attempt
+    // 5. Add decoy tiles AFTER verification (so they don't break solvability)
+    //    Decoys are extra rotatable path tiles in empty interior cells —
+    //    they look like they could be part of the solution but aren't.
+    //    Only on medium/hard, or when explicitly enabled.
+    const occupiedKeys = new Set([
+      ...goalPositions.map(p => `${p.x},${p.y}`),
+      ...pathTiles.map(t => `${t.x},${t.y}`),
+    ])
+
+    const decoyDirOptions: Direction[][] = [
+      ['up', 'down'],
+      ['left', 'right'],
+      ['up', 'right'],
+      ['down', 'left'],
+      ['up', 'left'],
+      ['down', 'right'],
+    ]
+
+    const decoyTiles: Tile[] = []
+
+    if (decoyCount > 0) {
+      const interiorCells: Position[] = []
+      for (let y = 1; y < gridSize - 1; y++)
+        for (let x = 1; x < gridSize - 1; x++)
+          if (!occupiedKeys.has(`${x},${y}`)) interiorCells.push({ x, y })
+
+      const shuffledInterior = shuffleArray(interiorCells)
+      for (let i = 0; i < Math.min(decoyCount, shuffledInterior.length); i++) {
+        const { x, y } = shuffledInterior[i]
+        const dirs = decoyDirOptions[rng(0, decoyDirOptions.length - 1)]
+        decoyTiles.push({
+          id: `decoy-${x}-${y}`,
+          type: 'path',
+          x, y,
+          connections: dirs,
+          isGoalNode: false,
+          canRotate: true,
+        })
+      }
+    }
+
+    const finalTiles = [...wallTiles, ...nodeTiles, ...pathTiles, ...decoyTiles]
+
     return {
-      id: generatedId,
+      id: Date.now() + attempt,
       name: generateLevelName(difficulty, gridSize, nodeCount),
       world: 4,
       gridSize,
-      tiles: allTiles,
+      tiles: finalTiles,
       compressionDelay: diffParams.compressionDelay,
       compressionRate,
       maxMoves,
@@ -547,7 +586,7 @@ export function generateLevel(opts: GenerateOptions): Level {
     }
   }
 
-  // Fallback — simple 2-node guaranteed solvable level
+  // Fallback — simple guaranteed solvable level
   return generateSimpleFallback(gridSize, difficulty)
 }
 
@@ -574,10 +613,10 @@ function generateSimpleFallback(gridSize: number, difficulty: string): Level {
   const wallTiles: Tile[] = []
   for (let i = 0; i < gridSize; i++) {
     wallTiles.push({ id: `wall-${i}-0`, type: 'wall', x: i, y: 0, connections: [], isGoalNode: false, canRotate: false })
-    wallTiles.push({ id: `wall-${i}-${gridSize-1}`, type: 'wall', x: i, y: gridSize - 1, connections: [], isGoalNode: false, canRotate: false })
+    wallTiles.push({ id: `wall-${i}-${gridSize - 1}`, type: 'wall', x: i, y: gridSize - 1, connections: [], isGoalNode: false, canRotate: false })
     if (i > 0 && i < gridSize - 1) {
       wallTiles.push({ id: `wall-0-${i}`, type: 'wall', x: 0, y: i, connections: [], isGoalNode: false, canRotate: false })
-      wallTiles.push({ id: `wall-${gridSize-1}-${i}`, type: 'wall', x: gridSize - 1, y: i, connections: [], isGoalNode: false, canRotate: false })
+      wallTiles.push({ id: `wall-${gridSize - 1}-${i}`, type: 'wall', x: gridSize - 1, y: i, connections: [], isGoalNode: false, canRotate: false })
     }
   }
 
@@ -587,9 +626,9 @@ function generateSimpleFallback(gridSize: number, difficulty: string): Level {
     world: 4, gridSize,
     tiles: [
       ...wallTiles,
-      { id: 'node-1-mid', type: 'node', x: 1, y: mid, connections: ['up','down','left','right'] as Direction[], isGoalNode: true, canRotate: false },
+      { id: 'node-1-mid', type: 'node', x: 1, y: mid, connections: ['up', 'down', 'left', 'right'] as Direction[], isGoalNode: true, canRotate: false },
       { id: 'path-mid-mid', type: 'path', x: mid, y: mid, connections: ['up', 'down'] as Direction[], isGoalNode: false, canRotate: true },
-      { id: `node-${gridSize-2}-mid`, type: 'node', x: gridSize - 2, y: mid, connections: ['up','down','left','right'] as Direction[], isGoalNode: true, canRotate: false },
+      { id: `node-${gridSize - 2}-mid`, type: 'node', x: gridSize - 2, y: mid, connections: ['up', 'down', 'left', 'right'] as Direction[], isGoalNode: true, canRotate: false },
     ],
     compressionDelay: diffParams.compressionDelay,
     compressionRate: diffParams.compressionRate,

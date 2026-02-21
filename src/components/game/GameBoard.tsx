@@ -95,7 +95,6 @@ function Pipes({ connections, color, glow }: { connections: string[]; color: str
       {connections.includes('right') && (
         <div style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', height: 5, width: '53%', background: color, borderRadius: '0 3px 3px 0', boxShadow: `0 0 6px ${glow}` }} />
       )}
-      {/* Center junction dot */}
       <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 8, height: 8, background: color, borderRadius: '50%', boxShadow: `0 0 8px ${glow}` }} />
     </>
   )
@@ -186,152 +185,93 @@ function GameTile({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: canRotate ? 'pointer' : 'default',
         transform: pressed ? 'scale(0.84)' : justRotated ? 'scale(1.08)' : 'scale(1)',
-        transition: pressed ? 'transform 0.1s ease' : 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-        overflow: 'hidden',
+        transition: pressed ? 'transform 0.08s ease' : 'transform 0.2s cubic-bezier(0.34,1.56,0.64,1)',
         ...bgStyle,
+        overflow: 'hidden',
       }}
     >
-      {/* Gloss overlay */}
-      {(type === 'node' || (type === 'path')) && (
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(145deg, rgba(255,255,255,0.07) 0%, transparent 50%)',
-          pointerEvents: 'none', borderRadius: r - 1,
-        }} />
-      )}
-
-      {/* Ripple effect on rotate */}
-      {ripple && (
+      {/* Ripple */}
+      {ripple && canRotate && (
         <div style={{
           position: 'absolute', inset: 0, borderRadius: r,
-          background: 'rgba(255,255,255,0.15)',
+          background: 'rgba(255,255,255,0.12)',
           animation: 'none',
           opacity: 0,
+          transition: 'opacity 0.4s ease',
         }} />
       )}
 
-      {/* Connection pipes */}
-      {(type === 'node' || type === 'path') && connections.length > 0 && (
+      {/* Connections */}
+      {connections.length > 0 && type !== 'wall' && type !== 'crushed' && type !== 'empty' && (
         <Pipes connections={connections} color={connColor} glow={connGlow} />
       )}
 
-      {/* Goal node ring */}
-      {isGoalNode && (
+      {/* Rotate indicator dot */}
+      {canRotate && (
         <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          transform: 'translate(-50%, -50%)',
-          width: '40%', height: '40%',
-          border: `2px solid ${inDanger ? 'rgba(252,165,165,0.6)' : 'rgba(134,239,172,0.5)'}`,
-          borderRadius: '50%',
-          background: inDanger ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.06)',
-          zIndex: 1,
-          boxShadow: inDanger ? 'inset 0 0 8px rgba(239,68,68,0.3)' : 'inset 0 0 8px rgba(34,197,94,0.2)',
+          position: 'absolute', top: 3, right: 3,
+          width: 4, height: 4, borderRadius: '50%',
+          background: isHint ? '#fde68a' : inDanger ? '#fca5a5' : '#fcd34d',
+          boxShadow: `0 0 4px ${isHint ? 'rgba(253,230,138,0.8)' : 'rgba(252,211,77,0.6)'}`,
         }} />
       )}
 
       {/* Crushed X */}
       {type === 'crushed' && (
-        <div style={{ fontSize: tileSize > 50 ? 14 : 10, color: 'rgba(239,68,68,0.4)', fontWeight: 900, zIndex: 1 }}>✕</div>
-      )}
-
-      {/* Rotateable dot indicator */}
-      {canRotate && type === 'path' && (
-        <div style={{
-          position: 'absolute', top: 3, right: 3,
-          width: 5, height: 5,
-          background: isHint ? '#fde68a' : '#fbbf24',
-          borderRadius: '50%',
-          boxShadow: isHint ? '0 0 8px #fde68a, 0 0 14px rgba(253,230,138,0.4)' : '0 0 5px rgba(251,191,36,0.8)',
-          zIndex: 2,
-        }} />
-      )}
-
-      {/* Danger pulse ring */}
-      {inDanger && type !== 'wall' && type !== 'crushed' && (
-        <div style={{
-          position: 'absolute', inset: -2,
-          borderRadius: r + 2,
-          border: '2px solid rgba(239,68,68,0.5)',
-          pointerEvents: 'none',
-          zIndex: 3,
-        }} />
+        <div style={{ fontSize: tileSize > 40 ? 14 : 10, color: 'rgba(239,68,68,0.4)', fontWeight: 900, zIndex: 1 }}>✕</div>
       )}
     </div>
   )
 }
 
 /* ─────────────────────────────────────────
-   Game Overlay (idle / won / lost)
+   Overlay (idle / won / lost)
 ───────────────────────────────────────── */
-function Overlay({ status, moves, maxMoves, levelId, levelName, onStart, onNext, onMenu, onRetry, solution, hasNext, elapsedSeconds }: {
+function Overlay({
+  status, moves, maxMoves, levelId, levelName, onStart, onNext, onMenu, onRetry, solution, hasNext, elapsedSeconds
+}: {
   status: string; moves: number; maxMoves: number; levelId: number; levelName: string
   onStart: () => void; onNext: () => void; onMenu: () => void; onRetry: () => void
-  solution: { x: number; y: number; rotations: number }[] | null; hasNext: boolean
-  elapsedSeconds: number
+  solution: { x: number; y: number; rotations: number }[] | null; hasNext: boolean; elapsedSeconds: number
 }) {
-  const par = solution?.reduce((s, p) => s + p.rotations, 0) ?? null
-  const isPerfect = par !== null && moves <= par
   const mins = Math.floor(elapsedSeconds / 60)
   const secs = elapsedSeconds % 60
-  const timeStr = `${mins > 0 ? mins + 'm ' : ''}${secs}s`
+  const timeStr = elapsedSeconds > 0 ? `${mins > 0 ? mins + ':' : ''}${String(secs).padStart(2, '0')}s` : ''
 
   if (status === 'idle') return (
-    <div style={overlayBase}>
-      <div style={{ fontSize: 9, letterSpacing: '0.25em', color: '#3a3a55', marginBottom: 8 }}>LEVEL {levelId}</div>
-      <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: '-0.02em', marginBottom: 6 }}>{levelName}</div>
-      {par !== null && (
-        <div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 9 }}>★</span> Par: {par} rotation{par !== 1 ? 's' : ''}
-        </div>
-      )}
-      <div style={{
-        fontSize: 11, color: '#2a2a3e', marginBottom: 26, textAlign: 'center',
-        lineHeight: 1.85, padding: '0 24px',
-      }}>
-        Tap <span style={{ color: '#f59e0b', fontWeight: 700 }}>amber</span> tiles to rotate them.<br />
-        Connect all <span style={{ color: '#22c55e', fontWeight: 700 }}>green</span> nodes<br />
-        before the walls close in.
+    <div style={overlayStyle}>
+      <div style={{ fontSize: 11, color: '#3a3a55', letterSpacing: '0.2em', marginBottom: 8 }}>READY</div>
+      <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 6 }}>{levelName}</div>
+      <div style={{ fontSize: 10, color: '#25253a', marginBottom: 28 }}>
+        {solution ? `${solution.length === 0 ? 'Already solved' : `${solution.length} move${solution.length !== 1 ? 's' : ''} to solve`}` : ''}
       </div>
-      <button onClick={onStart} style={btnPrimary}>▶ START LEVEL</button>
+      <button onClick={onStart} style={btnPrimary}>START</button>
     </div>
   )
 
   if (status === 'won') return (
-    <div style={{ ...overlayBase, background: 'rgba(5,20,10,0.97)' }}>
-      <div style={{ fontSize: 48, lineHeight: 1, marginBottom: 10, filter: 'drop-shadow(0 0 20px rgba(34,197,94,0.9))' }}>
-        ✦
+    <div style={overlayStyle}>
+      <div style={{ fontSize: 32, marginBottom: 4 }}>✦</div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: '#22c55e', marginBottom: 4 }}>CONNECTED</div>
+      <div style={{ fontSize: 10, color: '#3a3a55', marginBottom: 20 }}>
+        {moves} move{moves !== 1 ? 's' : ''}{timeStr ? ` · ${timeStr}` : ''}
       </div>
-      <div style={{ fontSize: 9, letterSpacing: '0.3em', color: '#22c55e', marginBottom: 4 }}>LEVEL CLEAR</div>
-      <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 4, letterSpacing: '-0.03em' }}>CONNECTED!</div>
-      {isPerfect && (
-        <div style={{ fontSize: 12, color: '#fbbf24', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-          ★ Perfect solve! Beat par!
-        </div>
-      )}
-      <div style={{ fontSize: 12, color: '#1a4d2e', marginBottom: 6 }}>{moves} / {maxMoves} moves · {timeStr}</div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-        <button onClick={onMenu} style={btnGhost}>← Menu</button>
-        {hasNext
-          ? <button onClick={onNext} style={btnPrimary}>Next Level →</button>
-          : <button onClick={onMenu} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #fbbf24, #f59e0b)' }}>All Done! 🎉</button>
-        }
+      <div style={{ display: 'flex', gap: 10 }}>
+        {hasNext && <button onClick={onNext} style={btnPrimary}>NEXT →</button>}
+        <button onClick={onMenu} style={btnGhost}>Menu</button>
+        <button onClick={onRetry} style={btnGhost}>↺</button>
       </div>
     </div>
   )
 
   if (status === 'lost') return (
-    <div style={{ ...overlayBase, background: 'rgba(20,3,3,0.97)' }}>
-      <div style={{ fontSize: 48, lineHeight: 1, marginBottom: 10, filter: 'drop-shadow(0 0 20px rgba(239,68,68,0.9))' }}>
-        ✖
-      </div>
-      <div style={{ fontSize: 9, letterSpacing: '0.3em', color: '#ef4444', marginBottom: 4 }}>NODE CRUSHED</div>
-      <div style={{ fontSize: 28, fontWeight: 900, marginBottom: 4, letterSpacing: '-0.03em' }}>DESTROYED</div>
-      <div style={{ fontSize: 11, color: '#4a1010', marginBottom: 18 }}>A goal node was crushed by the advancing walls.</div>
+    <div style={overlayStyle}>
+      <div style={{ fontSize: 32, marginBottom: 4 }}>☠</div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: '#ef4444', marginBottom: 4 }}>CRUSHED</div>
+      <div style={{ fontSize: 10, color: '#3a3a55', marginBottom: 20 }}>The walls got you</div>
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={onMenu} style={btnGhost}>← Menu</button>
-        <button onClick={onRetry} style={{ ...btnPrimary, background: 'linear-gradient(135deg, #dc2626, #b91c1c)', boxShadow: '0 4px 20px rgba(220,38,38,0.4)' }}>
-          Retry ↺
-        </button>
+        <button onClick={onRetry} style={btnPrimary}>RETRY</button>
+        <button onClick={onMenu} style={btnGhost}>Menu</button>
       </div>
     </div>
   )
@@ -339,10 +279,10 @@ function Overlay({ status, moves, maxMoves, levelId, levelName, onStart, onNext,
   return null
 }
 
-const overlayBase: React.CSSProperties = {
-  position: 'absolute', inset: 0, borderRadius: 16, zIndex: 10,
+const overlayStyle: React.CSSProperties = {
+  position: 'absolute', inset: 0, borderRadius: 18, zIndex: 10,
   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-  background: 'rgba(4,4,12,0.96)', backdropFilter: 'blur(6px)',
+  background: 'rgba(4,4,12,0.88)', backdropFilter: 'blur(6px)',
   color: '#fff',
 }
 const btnPrimary: React.CSSProperties = {
@@ -368,17 +308,30 @@ function LevelGeneratorPanel({ onLoad }: { onLoad: (level: Level) => void }) {
   const [result, setResult] = useState<{ level: Level; valid: boolean; minMoves: number } | null>(null)
   const [tab, setTab] = useState<'gen' | 'saved'>('gen')
   const [attempts, setAttempts] = useState(0)
+  // Decoy toggle: null = use difficulty default, true/false = override
+  const [decoysOverride, setDecoysOverride] = useState<boolean | null>(null)
 
   const maxNodes = Math.min(6, Math.floor((gridSize - 2) * (gridSize - 2) / 2))
   const diff = { easy: '#22c55e', medium: '#f59e0b', hard: '#ef4444' }
+
+  // What decoys setting will actually be used
+  const defaultDecoys = difficulty !== 'easy'
+  const effectiveDecoys = decoysOverride !== null ? decoysOverride : defaultDecoys
 
   const handleGenerate = async () => {
     setGenerating(true)
     setResult(null)
     setAttempts(a => a + 1)
-    await new Promise(r => setTimeout(r, 80)) // allow UI to update
+    // Yield two frames so UI updates before blocking work
+    await new Promise(r => setTimeout(r, 0))
+    await new Promise(r => requestAnimationFrame(r))
     try {
-      const level = generateLevel({ gridSize, nodeCount: Math.min(nodeCount, maxNodes), difficulty })
+      const level = generateLevel({
+        gridSize,
+        nodeCount: Math.min(nodeCount, maxNodes),
+        difficulty,
+        decoys: decoysOverride !== null ? decoysOverride : undefined,
+      })
       const check = verifyLevel(level)
       setResult({ level, valid: check.solvable, minMoves: check.minMoves })
     } catch {
@@ -438,7 +391,7 @@ function LevelGeneratorPanel({ onLoad }: { onLoad: (level: Level) => void }) {
               <div style={{ fontSize: 10, letterSpacing: '0.12em', color: '#3a3a55', marginBottom: 8 }}>DIFFICULTY</div>
               <div style={{ display: 'flex', gap: 6 }}>
                 {(['easy', 'medium', 'hard'] as const).map(d => (
-                  <button key={d} onClick={() => { setDifficulty(d); setResult(null) }} style={{
+                  <button key={d} onClick={() => { setDifficulty(d); setResult(null); setDecoysOverride(null) }} style={{
                     flex: 1, padding: '9px 0', borderRadius: 9, cursor: 'pointer',
                     border: `1px solid ${difficulty === d ? diff[d] + '80' : '#1a1a2e'}`,
                     background: difficulty === d ? `${diff[d]}15` : 'rgba(255,255,255,0.01)',
@@ -448,6 +401,55 @@ function LevelGeneratorPanel({ onLoad }: { onLoad: (level: Level) => void }) {
                   }}>{d}</button>
                 ))}
               </div>
+            </div>
+
+            {/* Decoy tiles toggle */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <div>
+                  <div style={{ fontSize: 10, letterSpacing: '0.12em', color: '#3a3a55' }}>DECOY TILES</div>
+                  <div style={{ fontSize: 9, color: '#25253a', marginTop: 2 }}>
+                    {effectiveDecoys
+                      ? `${difficulty === 'hard' ? 3 : 2} fake paths to mislead`
+                      : 'off — only on medium/hard by default'}
+                  </div>
+                </div>
+                {/* Toggle button */}
+                <button
+                  onClick={() => {
+                    // Cycle: default → force on → force off → default
+                    if (decoysOverride === null) setDecoysOverride(true)
+                    else if (decoysOverride === true) setDecoysOverride(false)
+                    else setDecoysOverride(null)
+                    setResult(null)
+                  }}
+                  style={{
+                    padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 10, fontWeight: 700,
+                    border: `1px solid ${
+                      decoysOverride === null ? '#3a3a55' :
+                      decoysOverride ? '#f59e0b80' : '#2a2a3e'
+                    }`,
+                    background: decoysOverride === null
+                      ? 'transparent'
+                      : decoysOverride
+                        ? 'rgba(245,158,11,0.12)'
+                        : 'rgba(255,255,255,0.02)',
+                    color: decoysOverride === null ? '#3a3a55' : decoysOverride ? '#f59e0b' : '#2a2a3e',
+                    transition: 'all 0.15s',
+                    flexShrink: 0,
+                  }}
+                >
+                  {decoysOverride === null ? 'AUTO' : decoysOverride ? 'ON' : 'OFF'}
+                </button>
+              </div>
+              {/* Visual indicator */}
+              <div style={{
+                height: 2, borderRadius: 1,
+                background: effectiveDecoys
+                  ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                  : '#12122a',
+                transition: 'background 0.3s',
+              }} />
             </div>
           </div>
 
@@ -484,7 +486,7 @@ function LevelGeneratorPanel({ onLoad }: { onLoad: (level: Level) => void }) {
                 <div style={{ fontSize: 9, color: '#25253a', textAlign: 'right' }}>
                   <div>{gridSize}×{gridSize} grid</div>
                   <div>{Math.min(nodeCount, maxNodes)} nodes</div>
-                  <div>{difficulty}</div>
+                  <div>{difficulty}{effectiveDecoys ? ' + decoys' : ''}</div>
                 </div>
               </div>
               {result.valid ? (
@@ -572,7 +574,6 @@ function StarField() {
       y: Math.random() * 100,
       size: 0.5 + Math.random() * 1.5,
       opacity: 0.1 + Math.random() * 0.4,
-      speed: 0.3 + Math.random() * 0.7,
     }))
   )
 
@@ -803,7 +804,6 @@ export default function GameBoard() {
     tapTile(x, y)
   }
 
-  // Routing
   if (showTutorial || status === 'tutorial') return <TutorialScreen onComplete={completeTutorial} />
   if (status === 'menu' || !currentLevel) return <MenuScreen />
 
@@ -813,7 +813,6 @@ export default function GameBoard() {
   const hintPos = showHint && solution?.length ? solution[0] : null
   const nextLevel = allLevels.find(l => l.id === currentLevel.id + 1) ?? null
 
-  // Compute tile size for render
   const boardPx = Math.min(370, typeof window !== 'undefined' ? Math.min(window.innerWidth * 0.88, window.innerHeight * 0.72) : 370)
   const gap = gs > 5 ? 3 : 4
   const padding = gs > 5 ? 6 : 8
@@ -880,7 +879,6 @@ export default function GameBoard() {
         display: 'flex', alignItems: 'center', gap: 10,
         width: '100%', maxWidth: 400, marginBottom: 12, position: 'relative', zIndex: 1,
       }}>
-        {/* Move counter */}
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           background: '#07070e', border: '1px solid #12122a', borderRadius: 10,
@@ -896,7 +894,6 @@ export default function GameBoard() {
 
         <CompressionBar percent={comprPct} active={compressionActive} />
 
-        {/* Timer */}
         {status === 'playing' && (
           <div style={{
             background: '#07070e', border: '1px solid #12122a', borderRadius: 10,
@@ -905,7 +902,6 @@ export default function GameBoard() {
           }}>{timeStr}</div>
         )}
 
-        {/* Undo */}
         {status === 'playing' && (
           <button
             onClick={undoMove}
