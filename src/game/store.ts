@@ -133,6 +133,8 @@ const initialState: GameState = {
   generatedLevels: saved.generatedLevels,
   elapsedSeconds: 0,
   screenShake: false,
+  timeUntilWallMove: 0,
+  wallsJustAdvanced: false,
 }
 
 export const useGameStore = create<GameState & GameActions>((set, get) => ({
@@ -151,6 +153,8 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       lastRotatedPos: null,
       elapsedSeconds: 0,
       screenShake: false,
+      timeUntilWallMove: level.compressionRate,
+      wallsJustAdvanced: false,
     })
   },
 
@@ -163,7 +167,7 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const { currentLevel } = get()
     if (!currentLevel) return
     sfx('start')
-    set({ status: 'playing', elapsedSeconds: 0 })
+    set({ status: 'playing', elapsedSeconds: 0, timeUntilWallMove: currentLevel.compressionRate })
 
     if (get().checkWin()) return
 
@@ -243,7 +247,16 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
       return t
     })
 
-    set({ tiles: newTiles, wallOffset: newOffset })
+    // Reset the wall movement timer and set animation flag
+    set({ 
+      tiles: newTiles, 
+      wallOffset: newOffset, 
+      timeUntilWallMove: currentLevel.compressionRate,
+      wallsJustAdvanced: true,
+    })
+
+    // Clear the animation flag after animation completes
+    setTimeout(() => set({ wallsJustAdvanced: false }), 400)
 
     if (crushedNode) {
       sfx('lose')
@@ -302,6 +315,14 @@ export const useGameStore = create<GameState & GameActions>((set, get) => ({
     const { status } = get()
     if (status === 'playing') {
       set(state => ({ elapsedSeconds: state.elapsedSeconds + 1 }))
+    }
+  },
+
+  tickWallTimer: () => {
+    const { status, compressionActive, timeUntilWallMove } = get()
+    if (status === 'playing' && compressionActive) {
+      const newTime = Math.max(0, timeUntilWallMove - 100) // Decrease by 100ms
+      set({ timeUntilWallMove: newTime })
     }
   },
 

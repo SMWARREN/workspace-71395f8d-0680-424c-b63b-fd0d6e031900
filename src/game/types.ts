@@ -50,6 +50,8 @@ export interface GameState {
   generatedLevels: Level[]
   elapsedSeconds: number
   screenShake: boolean
+  timeUntilWallMove: number
+  wallsJustAdvanced: boolean
 }
 
 export interface GameActions {
@@ -65,5 +67,6 @@ export interface GameActions {
   addGeneratedLevel: (level: Level) => void
   deleteGeneratedLevel: (id: number) => void
   tickTimer: () => void
+  tickWallTimer: () => void
   triggerShake: () => void
 }

@@ -743,15 +743,18 @@ export default function GameBoard() {
   const {
     currentLevel, tiles, wallOffset, compressionActive,
     compressionRate, moves, status, elapsedSeconds, screenShake,
+    timeUntilWallMove, wallsJustAdvanced,
     loadLevel, startGame, tapTile, advanceWalls,
     restartLevel, goToMenu, undoMove,
-    completeTutorial, showTutorial, bestMoves, tickTimer,
+    completeTutorial, showTutorial, bestMoves, tickTimer, tickWallTimer,
     generatedLevels, history,
   } = useGameStore()
 
   const { particles, burst } = useParticles()
   const gameLoopRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const wallTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const rafRef = useRef<number | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
   const [showHint, setShowHint] = useState(false)
 
@@ -766,13 +769,21 @@ export default function GameBoard() {
     }
   }, [status, compressionActive, compressionRate, advanceWalls])
 
-  // Timer loop
+  // Timer loop (elapsed seconds)
   useEffect(() => {
     if (status === 'playing') {
       timerRef.current = setInterval(tickTimer, 1000)
       return () => { if (timerRef.current) clearInterval(timerRef.current) }
     }
   }, [status, tickTimer])
+
+  // Wall countdown timer (updates every 100ms for smooth countdown)
+  useEffect(() => {
+    if (status === 'playing' && compressionActive) {
+      wallTimerRef.current = setInterval(tickWallTimer, 100)
+      return () => { if (wallTimerRef.current) clearInterval(wallTimerRef.current) }
+    }
+  }, [status, compressionActive, tickWallTimer])
 
   // Particles on win
   useEffect(() => {
@@ -894,6 +905,27 @@ export default function GameBoard() {
 
         <CompressionBar percent={comprPct} active={compressionActive} />
 
+        {/* Wall Countdown Timer */}
+        {status === 'playing' && compressionActive && (
+          <div style={{
+            background: '#07070e', border: '1px solid #12122a', borderRadius: 10,
+            padding: '6px 10px', flexShrink: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', minWidth: 48,
+          }}>
+            <div style={{ 
+              fontSize: 14, fontWeight: 900, lineHeight: 1, 
+              fontVariantNumeric: 'tabular-nums',
+              color: timeUntilWallMove < 1000 ? '#ef4444' : timeUntilWallMove < 2000 ? '#f59e0b' : '#3a3a55',
+              transition: 'color 0.3s',
+            }}>
+              {(timeUntilWallMove / 1000).toFixed(1)}
+            </div>
+            <div style={{ fontSize: 7, color: '#25253a', letterSpacing: '0.1em', marginTop: 1 }}>
+              NEXT
+            </div>
+          </div>
+        )}
+
         {status === 'playing' && (
           <div style={{
             background: '#07070e', border: '1px solid #12122a', borderRadius: 10,
@@ -961,6 +993,62 @@ export default function GameBoard() {
             })
           )}
         </div>
+
+        {/* Animated Walls Overlay */}
+        {status === 'playing' && wallOffset > 0 && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            borderRadius: 18,
+            overflow: 'hidden',
+          }}>
+            {/* Top wall */}
+            <div style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0,
+              height: `${(wallOffset / gs) * 100}%`,
+              background: 'linear-gradient(180deg, rgba(239,68,68,0.15) 0%, transparent 100%)',
+              borderBottom: '2px solid rgba(239,68,68,0.3)',
+              transform: wallsJustAdvanced ? 'translateY(2px)' : 'translateY(0)',
+              transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              boxShadow: wallsJustAdvanced ? '0 4px 20px rgba(239,68,68,0.4)' : 'none',
+            }} />
+            {/* Bottom wall */}
+            <div style={{
+              position: 'absolute',
+              bottom: 0, left: 0, right: 0,
+              height: `${(wallOffset / gs) * 100}%`,
+              background: 'linear-gradient(0deg, rgba(239,68,68,0.15) 0%, transparent 100%)',
+              borderTop: '2px solid rgba(239,68,68,0.3)',
+              transform: wallsJustAdvanced ? 'translateY(-2px)' : 'translateY(0)',
+              transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              boxShadow: wallsJustAdvanced ? '0 -4px 20px rgba(239,68,68,0.4)' : 'none',
+            }} />
+            {/* Left wall */}
+            <div style={{
+              position: 'absolute',
+              left: 0, top: 0, bottom: 0,
+              width: `${(wallOffset / gs) * 100}%`,
+              background: 'linear-gradient(90deg, rgba(239,68,68,0.15) 0%, transparent 100%)',
+              borderRight: '2px solid rgba(239,68,68,0.3)',
+              transform: wallsJustAdvanced ? 'translateX(2px)' : 'translateX(0)',
+              transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              boxShadow: wallsJustAdvanced ? '4px 0 20px rgba(239,68,68,0.4)' : 'none',
+            }} />
+            {/* Right wall */}
+            <div style={{
+              position: 'absolute',
+              right: 0, top: 0, bottom: 0,
+              width: `${(wallOffset / gs) * 100}%`,
+              background: 'linear-gradient(270deg, rgba(239,68,68,0.15) 0%, transparent 100%)',
+              borderLeft: '2px solid rgba(239,68,68,0.3)',
+              transform: wallsJustAdvanced ? 'translateX(-2px)' : 'translateX(0)',
+              transition: 'all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              boxShadow: wallsJustAdvanced ? '-4px 0 20px rgba(239,68,68,0.4)' : 'none',
+            }} />
+          </div>
+        )}
 
         {/* Game state overlays */}
         {(status === 'idle' || status === 'won' || status === 'lost') && (
